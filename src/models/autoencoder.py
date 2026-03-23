@@ -11,7 +11,7 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim1, hidden_dim2),
             nn.ReLU(),
-            nn.Linear(hidden_dim2, latent_dim)
+            nn.Linear(hidden_dim2, latent_dim),
         )
 
         self.decoder = nn.Sequential(
@@ -19,7 +19,7 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim2, hidden_dim1),
             nn.ReLU(),
-            nn.Linear(hidden_dim1, input_dim)
+            nn.Linear(hidden_dim1, input_dim),
         )
 
     def forward(self, x):

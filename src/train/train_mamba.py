@@ -12,10 +12,9 @@ from src.models.mamba_classifier import MambaClassifier
 
 
 def extract_latent_and_error(model, X, device, batch_size=256):
-    """
-    Pass raw features through the autoencoder and return:
-    [latent vector || reconstruction error]
-    """
+#Pass raw features through the autoencoder and return:
+#[latent vector || reconstruction error]
+
     model.eval()
     combined_features = []
 
