@@ -1,5 +1,8 @@
-# Ignore dataset files
+# Ignore all data except sim_raw
 data/
+!data/raw/
+!data/raw/sim_raw/
+!data/raw/sim_raw/**
 
 # Ignore logs and data files
 *.csv
