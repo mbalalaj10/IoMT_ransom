@@ -1,8 +1,7 @@
 # Ignore all data except sim_raw
-data/
-!data/raw/
-!data/raw/sim_raw/
-!data/raw/sim_raw/**
+data/raw/ton_raw/
+data/processed/
+data/splits/
 
 # Ignore logs and data files
 *.csv
