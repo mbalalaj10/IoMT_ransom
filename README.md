@@ -4,30 +4,6 @@ Early detection of ransomware attacks on Internet of Medical Things (IoMT) devic
 
 ---
 
-## Architecture
-
-```
-Raw network/device features
-        │
-        ▼
-  Autoencoder
-  ┌─────────────────────────────┐
-  │  Encoder → latent vector z  │
-  │  Decoder → reconstruction   │
-  │  Error signal (MSE)         │
-  └─────────────────────────────┘
-        │  z + reconstruction error
-        ▼
-  Sequence Classifier (Mamba / LSTM)
-  ┌─────────────────────────────┐
-  │  Sliding window (seq_len=20)│
-  │  Selective SSM layers       │
-  │  Binary: normal / attack    │
-  └─────────────────────────────┘
-```
-
----
-
 ## Datasets
 
 ### Simulated ICU (included)
@@ -38,7 +14,7 @@ python -m src.simulation.simulate_icu
 80 devices (ventilators, infusion pumps, patient monitors, IoMT gateways), 500 timesteps each. Attack onset at t=200.
 
 ### TON-IoT (must be downloaded separately)
-Download the **Network dataset (Bro/Zeek logs)** from the [TON-IoT dataset page](https://research.unsw.edu.au/projects/toniot-datasets) and place it at:
+Download the **Network dataset** from the [TON-IoT dataset page](https://research.unsw.edu.au/projects/toniot-datasets) and place it at:
 ```
 data/raw/ton_raw/Network_dataset_Bro/
     normal_Bro/
@@ -49,13 +25,12 @@ data/raw/ton_raw/Network_dataset_Bro/
 
 ## Installation
 
-**Requirements:** Python 3.9+
+**Requirements:**
 
 ```bash
 pip install torch numpy pandas scikit-learn scipy matplotlib joblib
 ```
 
-For GPU support, install PyTorch with CUDA from [pytorch.org](https://pytorch.org/get-started/locally/) — select your OS, CUDA version, and copy the install command. The code automatically uses GPU if available.
 
 ---
 
