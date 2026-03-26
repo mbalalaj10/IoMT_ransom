@@ -151,6 +151,7 @@ def main(dataset_name="ton"):
         avg_loss = total_loss / len(train_loader)
         epoch_losses.append(avg_loss)
         print(f"Epoch [{epoch + 1}/{cfg.clf_epochs}] Loss: {avg_loss:.6f}")
+        torch.cuda.empty_cache()
 
     # Save classifier
     clf_path = cfg.ton_classifier_model_path if dataset_name.lower() == "ton" else cfg.sim_classifier_model_path

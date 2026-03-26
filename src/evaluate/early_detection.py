@@ -1,12 +1,12 @@
 """
 Early Detection Analysis
 
-Measures how quickly Mamba vs a per-row LR baseline detects a ransomware
-attack after it begins on each ICU device.
+Measures how quickly Mamba, LSTM, and a per-row LR baseline detect a
+ransomware attack after it begins on each ICU device.
 
 Detection is defined as: the first sliding-window sequence that the model
-classifies as an attack.  For Mamba this window spans seq_len=20 rows; for
-LR the "window" is just the last row (same as per-row inference).
+classifies as an attack.  For Mamba and LSTM the window spans seq_len=20
+rows; for LR the "window" is just the last row (per-row inference).
 
 """
 
@@ -19,6 +19,7 @@ from src.config import Config
 from src.utils import set_seed, get_device
 from src.models.autoencoder import Autoencoder
 from src.models.mamba_classifier import MambaClassifier
+from src.models.lstm_classifier import LSTMClassifier
 
 
 ATTACK_START = 200   # must match simulate_icu.py
@@ -54,18 +55,28 @@ def first_detection_timestep(preds, seq_len):
     hits = np.where(preds == 1)[0]
     if len(hits) == 0:
         return None
-    first_window = hits[0]
-    return first_window + seq_len - 1   # last timestep of that window
+    return hits[0] + seq_len - 1   # last timestep of that window
 
 
-def ascii_chart(title, x_vals, mamba_vals, lr_vals, width=50):
+def seq_model_preds(model, windows, device, threshold):
+    """Run a sequence model (Mamba or LSTM) over pre-built windows tensor."""
+    X_tensor = torch.tensor(windows, dtype=torch.float32).to(device)
+    with torch.no_grad():
+        logits = model(X_tensor)
+        return (torch.sigmoid(logits) >= threshold).cpu().numpy().astype(int)
+
+
+def ascii_chart(title, x_vals, series, width=30):
+    """series: list of (label, values) pairs."""
+    headers = "".join(f"  {lbl:>7}" for lbl, _ in series)
+    bars    = "".join(f"  {lbl:^{width}}" for lbl, _ in series)
     print(f"\n  {title}")
-    print(f"  {'Step':>5}  {'Mamba':>7}  {'LR':>7}  {'Mamba':^{width}}  {'LR':^{width}}")
-    print(f"  {'-'*5}  {'-'*7}  {'-'*7}  {'-'*width}  {'-'*width}")
-    for x, mv, lv in zip(x_vals, mamba_vals, lr_vals):
-        mb = int(mv * width)
-        lb = int(lv * width)
-        print(f"  {x:>5}  {mv:>6.1%}  {lv:>6.1%}  {'#'*mb:{width}}  {'#'*lb:{width}}")
+    print(f"  {'Step':>5}{headers}  " + "  ".join(f"{'#':^{width}}" for _ in series))
+    print(f"  {'-'*5}" + "  -------" * len(series))
+    for i, x in enumerate(x_vals):
+        vals_str = "".join(f"  {v[i]:>6.1%}" for _, v in series)
+        bar_str  = "  ".join(f"{'#' * int(v[i] * width):{width}}" for _, v in series)
+        print(f"  {x:>5}{vals_str}  {bar_str}")
 
 
 def main():
@@ -83,7 +94,7 @@ def main():
     group_ids_train = np.load(os.path.join(split_dir, "group_ids_train.npy"), allow_pickle=True)
     group_ids_test  = np.load(os.path.join(split_dir, "group_ids_test.npy"),  allow_pickle=True)
 
-    # load models
+    # ── load models ───────────────────────────────────────────────────────────
     ae = Autoencoder(
         input_dim=X_train.shape[1],
         hidden_dim1=cfg.ae_hidden_dim1,
@@ -102,126 +113,120 @@ def main():
     mamba.load_state_dict(torch.load(cfg.sim_classifier_model_path, map_location=device))
     mamba.eval()
 
+    lstm = LSTMClassifier(
+        input_dim=cfg.latent_dim + 1,
+        hidden_dim=cfg.d_model,
+        num_layers=cfg.num_layers,
+        dropout=cfg.dropout,
+    ).to(device)
+    lstm.load_state_dict(torch.load(cfg.sim_lstm_model_path, map_location=device))
+    lstm.eval()
+
     print("Encoding features...")
     Z_train = extract_latent_and_error(ae, X_train, device)
     Z_test  = extract_latent_and_error(ae, X_test,  device)
 
-    # train LR on last-row features of training sequences
+    # ── train LR on last-row features of training sequences ───────────────────
     unique_train, inv_train = np.unique(group_ids_train, return_inverse=True)
     train_last, train_labels = [], []
     for gi in range(len(unique_train)):
         rows = np.where(inv_train == gi)[0]
         if len(rows) < seq_len:
             continue
-        windows = sliding_windows(Z_train[rows], seq_len)   # (W, seq_len, F)
-        last_rows = windows[:, -1, :]                        # (W, F)
+        windows   = sliding_windows(Z_train[rows], seq_len)
+        last_rows = windows[:, -1, :]
         y_rows    = y_train[rows]
-        labels    = np.array([int(np.any(y_rows[j:j + seq_len])) for j in range(len(rows) - seq_len + 1)])
+        labels    = np.array([int(np.any(y_rows[j:j + seq_len]))
+                              for j in range(len(rows) - seq_len + 1)])
         train_last.append(last_rows)
         train_labels.append(labels)
 
     lr = LogisticRegression(max_iter=1000, random_state=cfg.random_seed)
     lr.fit(np.vstack(train_last), np.concatenate(train_labels))
 
-    # per-device early detection on test set
+    # ── per-device early detection on test set ────────────────────────────────
     unique_test, inv_test = np.unique(group_ids_test, return_inverse=True)
 
-    mamba_lags, lr_lags = [], []
-    mamba_missed, lr_missed = 0, 0
+    mamba_lags,  lstm_lags,  lr_lags  = [], [], []
+    mamba_missed, lstm_missed, lr_missed = 0, 0, 0
     n_attacked = 0
 
     for gi in range(len(unique_test)):
-        rows = np.where(inv_test == gi)[0]
+        rows   = np.where(inv_test == gi)[0]
         dev_id = unique_test[gi]
 
-        # only evaluate attacked devices
         if "attack" not in str(dev_id):
             continue
 
         n_attacked += 1
         Z_dev = Z_test[rows]
-        y_dev = y_test[rows]
 
         if len(Z_dev) < seq_len:
             mamba_missed += 1
+            lstm_missed  += 1
             lr_missed    += 1
             continue
 
         windows = sliding_windows(Z_dev, seq_len)   # (W, seq_len, F)
 
-        # Mamba inference
-        X_tensor = torch.tensor(windows, dtype=torch.float32).to(device)
-        with torch.no_grad():
-            logits = mamba(X_tensor)
-            mamba_preds = (torch.sigmoid(logits) >= cfg.threshold).cpu().numpy().astype(int)
+        mamba_preds = seq_model_preds(mamba, windows, device, cfg.threshold)
+        lstm_preds  = seq_model_preds(lstm,  windows, device, cfg.threshold)
+        lr_preds    = lr.predict(windows[:, -1, :])
 
-        # LR inference (last row of each window)
-        last_rows = windows[:, -1, :]
-        lr_preds  = lr.predict(last_rows)
-
-        # detection timestep = first window predicted as attack, mapped back to
-        # the device's local timestep axis (0 = first row in device's test slice)
-        mt = first_detection_timestep(mamba_preds, seq_len)
-        lt = first_detection_timestep(lr_preds,    seq_len)
-
-        if mt is None:
-            mamba_missed += 1
-        else:
-            lag = mt - ATTACK_START
-            if lag < 0:
-                # Model fired before attack onset — false positive, not early detection
-                mamba_missed += 1
-                print(f"  [FP] Mamba false alarm on {dev_id} at t={mt} ({lag} steps before attack)")
+        for model_name, preds, lags, missed_ref in [
+            ("Mamba", mamba_preds, mamba_lags, None),
+            ("LSTM",  lstm_preds,  lstm_lags,  None),
+            ("LR",    lr_preds,    lr_lags,    None),
+        ]:
+            t = first_detection_timestep(preds, seq_len)
+            if t is None:
+                if model_name == "Mamba":  mamba_missed += 1
+                elif model_name == "LSTM": lstm_missed  += 1
+                else:                      lr_missed    += 1
             else:
-                mamba_lags.append(lag)
+                lag = t - ATTACK_START
+                if lag < 0:
+                    print(f"  [FP] {model_name} false alarm on {dev_id} "
+                          f"at t={t} ({lag} steps before attack)")
+                    if model_name == "Mamba":  mamba_missed += 1
+                    elif model_name == "LSTM": lstm_missed  += 1
+                    else:                      lr_missed    += 1
+                else:
+                    lags.append(lag)
 
-        if lt is None:
-            lr_missed += 1
-        else:
-            lag = lt - ATTACK_START
-            if lag < 0:
-                lr_missed += 1
-                print(f"  [FP] LR false alarm on {dev_id} at t={lt} ({lag} steps before attack)")
-            else:
-                lr_lags.append(lag)
-
-    # summary statistics
+    # ── summary statistics ────────────────────────────────────────────────────
     print(f"\nAttacked devices in test set : {n_attacked}")
-    print(f"Mamba  — detected: {len(mamba_lags)}/{n_attacked}, missed: {mamba_missed}")
-    print(f"LR     — detected: {len(lr_lags)}/{n_attacked},    missed: {lr_missed}")
+    print(f"Mamba — detected: {len(mamba_lags)}/{n_attacked}, missed: {mamba_missed}")
+    print(f"LSTM  — detected: {len(lstm_lags)}/{n_attacked},  missed: {lstm_missed}")
+    print(f"LR    — detected: {len(lr_lags)}/{n_attacked},    missed: {lr_missed}")
 
-    if mamba_lags:
-        print(f"\nMamba  detection lag (steps after attack_start):")
-        print(f"  Mean   : {np.mean(mamba_lags):.1f}")
-        print(f"  Median : {np.median(mamba_lags):.1f}")
-        print(f"  Min    : {np.min(mamba_lags)}")
-        print(f"  Max    : {np.max(mamba_lags)}")
+    for label, lags in [("Mamba", mamba_lags), ("LSTM", lstm_lags), ("LR", lr_lags)]:
+        if lags:
+            print(f"\n{label} detection lag (steps after attack_start):")
+            print(f"  Mean   : {np.mean(lags):.1f}")
+            print(f"  Median : {np.median(lags):.1f}")
+            print(f"  Min    : {np.min(lags)}")
+            print(f"  Max    : {np.max(lags)}")
 
-    if lr_lags:
-        print(f"\nLR     detection lag (steps after attack_start):")
-        print(f"  Mean   : {np.mean(lr_lags):.1f}")
-        print(f"  Median : {np.median(lr_lags):.1f}")
-        print(f"  Min    : {np.min(lr_lags)}")
-        print(f"  Max    : {np.max(lr_lags)}")
-
-    # cumulative detection rate over time
+    # ── cumulative detection rate table ───────────────────────────────────────
     max_steps = 100
     steps = list(range(0, max_steps + 1, 5))
-    mamba_cum, lr_cum = [], []
 
-    for s in steps:
-        mamba_cum.append(sum(1 for l in mamba_lags if l <= s) / n_attacked)
-        lr_cum.append(sum(1 for l in lr_lags    if l <= s) / n_attacked)
+    mamba_cum = [sum(1 for l in mamba_lags if l <= s) / n_attacked for s in steps]
+    lstm_cum  = [sum(1 for l in lstm_lags  if l <= s) / n_attacked for s in steps]
+    lr_cum    = [sum(1 for l in lr_lags    if l <= s) / n_attacked for s in steps]
 
     print("\n\nCumulative Detection Rate vs Steps After Attack Onset")
-    print(f"  {'Steps':>5}  {'Mamba':>7}  {'LR':>7}")
-    print(f"  {'-'*5}  {'-'*7}  {'-'*7}")
-    for s, mv, lv in zip(steps, mamba_cum, lr_cum):
-        print(f"  {s:>5}  {mv:>6.1%}  {lv:>6.1%}")
+    print(f"  {'Steps':>5}  {'Mamba':>7}  {'LSTM':>7}  {'LR':>7}")
+    print(f"  {'-'*5}  {'-'*7}  {'-'*7}  {'-'*7}")
+    for s, mv, lstmv, lv in zip(steps, mamba_cum, lstm_cum, lr_cum):
+        print(f"  {s:>5}  {mv:>6.1%}  {lstmv:>6.1%}  {lv:>6.1%}")
 
     ascii_chart(
         "Detection Rate (# = % detected)",
-        steps, mamba_cum, lr_cum, width=30
+        steps,
+        [("Mamba", mamba_cum), ("LSTM", lstm_cum), ("LR", lr_cum)],
+        width=25,
     )
 
 

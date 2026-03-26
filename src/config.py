@@ -33,7 +33,7 @@ class Config:
     ae_hidden_dim2: int = 64
     ae_learning_rate: float = 0.001
     ae_batch_size: int = 64
-    ae_epochs: int = 30
+    ae_epochs: int = 15
 
     # Transformer
     transformer_input_dim: int = latent_dim + 1
@@ -44,7 +44,7 @@ class Config:
     dropout: float = 0.2
     clf_learning_rate: float = 0.001
     clf_batch_size: int = 64
-    clf_epochs: int = 30
+    clf_epochs: int = 15
 
     # Splits
     test_size: float = 0.2
