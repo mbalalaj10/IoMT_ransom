@@ -8,8 +8,10 @@ class Config:
     device: str = "cuda"
 
     # Raw data paths
-    raw_ton_iot_path: str = "data/raw/ton_raw/"
+    raw_ton_iot_path: str = "data/raw/ton_raw/network_data/network_data/"
     raw_icu_path: str = "data/raw/sim_raw/"
+    cic_wifi_mqtt_path: str = "data/raw/cic_raw/wifi_mqtt/"
+    cic_bluetooth_path: str = "data/raw/cic_raw/bluetooth/"
 
     # Processed data paths
     processed_ton_iot_path: str = "data/processed/ton_processed/"
