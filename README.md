@@ -16,10 +16,16 @@ python -m src.simulation.simulate_icu
 ### TON-IoT (must be downloaded separately)
 Download the **Network dataset** from the [TON-IoT dataset page](https://research.unsw.edu.au/projects/toniot-datasets) and place it at:
 ```
-data/raw/ton_raw/Network_dataset_Bro/
-    normal_Bro/
-    normal_attack_Bro/
+data/raw/ton_raw/network_data/network_data/
 ```
+
+### CICIoMT2024 (must be downloaded separately)
+Download the **CICIoMT2024** dataset and place the CSV files at:
+```
+data/raw/cic_raw/wifi_mqtt/      # WiFi/MQTT traffic CSVs
+data/raw/cic_raw/bluetooth/      # Bluetooth traffic CSVs
+```
+Benign files should have `benign` in the filename; all others are treated as attacks.
 
 ---
 
@@ -41,7 +47,8 @@ IoMT_ransom/
 ├── data/
 │   ├── raw/
 │   │   ├── sim_raw/          # Simulated ICU data (included)
-│   │   └── ton_raw/          # TON-IoT data (download separately)
+│   │   ├── ton_raw/          # TON-IoT data (download separately)
+│   │   └── cic_raw/          # CICIoMT2024 data (download separately)
 │   ├── processed/            # Scalers saved after preprocessing
 │   └── splits/               # Train/test numpy arrays
 ├── models/                   # Saved model weights (.pt files)
@@ -66,6 +73,8 @@ IoMT_ransom/
     │   ├── train_autoencoder.py
     │   ├── train_mamba.py
     │   └── train_lstm.py
+    ├── explore/
+    │   └── explore_cic.py    # EDA for CICIoMT2024 dataset
     └── evaluate/
         ├── evaluate_ton.py
         ├── evaluate_sim.py
@@ -140,6 +149,18 @@ python -m src.evaluate.significance
 python -m src.evaluate.visualize
 python -m src.evaluate.plot_loss_curves
 ```
+
+---
+
+## Exploratory Analysis (CICIoMT2024)
+
+Run EDA on the CICIoMT2024 dataset to generate label distributions, protocol composition, correlation heatmaps, feature importance, and anomaly gap plots:
+
+```bash
+python -m src.explore.explore_cic
+```
+
+Outputs are saved to `results/figures/` with the prefix `cic_`.
 
 ---
 
