@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This document outlines how to get i
 
 ### Reporting Bugs
 
-Open an [issue](https://github.com/mbalalaj10/IoMT_ransom/issues) with:
+Open an [issue](https://github.com/ethanmalavia/IoMT_ransom/issues) with:
 - A clear title and description
 - Steps to reproduce
 - Expected vs. actual behavior
@@ -36,7 +36,7 @@ Open an issue tagged `enhancement` describing:
 ## Development Setup
 
 ```bash
-git clone https://github.com/mbalalaj10/IoMT_ransom.git
+git clone https://github.com/ethanmalavia/IoMT_ransom.git
 cd IoMT_ransom
 pip install -r requirements.txt
 ```
