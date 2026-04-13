@@ -1,42 +1,74 @@
 # IoMT Ransomware Detection
 
-Early detection of ransomware attacks on Internet of Medical Things (IoMT) devices using a two-stage deep learning pipeline: an **Autoencoder** for feature compression and anomaly scoring, followed by a **Mamba** selective state space classifier for sequence-level attack detection.
+> Early detection of ransomware attacks on Internet of Medical Things (IoMT) devices using a two-stage deep learning pipeline.
+
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/mbalalaj10/IoMT_ransom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/mbalalaj10/IoMT_ransom)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10799/badge)](https://www.bestpractices.dev/projects/10799)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
+
+---
+
+## Overview
+
+This project presents a **two-stage deep learning pipeline** for detecting ransomware on IoMT (Internet of Medical Things) devices in real time:
+
+1. **Autoencoder (AE)** — Trained exclusively on benign traffic. Compresses raw sensor/network features into a latent representation and produces a per-sample reconstruction error (anomaly score).
+2. **Mamba Classifier** — A selective state-space model that ingests a sliding window of 20 consecutive latent vectors + reconstruction errors to classify sequences as benign or ransomware.
+
+The pipeline is benchmarked against an LSTM baseline and evaluated through ablation studies, early-detection analysis, and McNemar significance tests across three IoMT datasets.
+
+---
+
+## Architecture
+
+```
+Raw IoMT Traffic
+      │
+      ▼
+┌─────────────┐
+│ Autoencoder │  ← trained on benign only
+│  Encoder    │  → latent vector (dim=32)
+│  Decoder    │  → reconstruction error
+└─────────────┘
+      │  latent + recon_error
+      ▼
+┌──────────────────────────┐
+│  Sliding Window (len=20) │
+│  Mamba Classifier        │  ← sequence-level binary classifier
+└──────────────────────────┘
+      │
+      ▼
+  Benign / Ransomware
+```
 
 ---
 
 ## Datasets
 
-### Simulated ICU (included)
-Located at `data/raw/sim_raw/icu_simulation.csv`. If it is missing, regenerate it:
+| Dataset | Type | Notes |
+|---|---|---|
+| Simulated ICU | Synthetic | 80 devices, 500 timesteps, attack onset t=200. Included at `data/raw/sim_raw/`. |
+| TON-IoT | Real network traffic | Download from [UNSW](https://research.unsw.edu.au/projects/toniot-datasets). Place at `data/raw/ton_raw/`. |
+| CICIoMT2024 | Real WiFi/MQTT + Bluetooth | Download from [CIC](https://www.unb.ca/cic/datasets/iomt-dataset-2024.html). Place at `data/raw/cic_raw/`. |
+
+### Regenerate simulated data
+
 ```bash
 python -m src.simulation.simulate_icu
 ```
-80 devices (ventilators, infusion pumps, patient monitors, IoMT gateways), 500 timesteps each. Attack onset at t=200.
-
-### TON-IoT (must be downloaded separately)
-Download the **Network dataset** from the [TON-IoT dataset page](https://research.unsw.edu.au/projects/toniot-datasets) and place it at:
-```
-data/raw/ton_raw/network_data/network_data/
-```
-
-### CICIoMT2024 (must be downloaded separately)
-Download the **CICIoMT2024** dataset and place the CSV files at:
-```
-data/raw/cic_raw/wifi_mqtt/      # WiFi/MQTT traffic CSVs
-data/raw/cic_raw/bluetooth/      # Bluetooth traffic CSVs
-```
-Benign files should have `benign` in the filename; all others are treated as attacks.
 
 ---
 
 ## Installation
 
-**Requirements:**
-
 ```bash
-pip install torch numpy pandas scikit-learn scipy matplotlib joblib
+git clone https://github.com/mbalalaj10/IoMT_ransom.git
+cd IoMT_ransom
+pip install -r requirements.txt
 ```
 
+**Requirements:** `torch`, `numpy`, `pandas`, `scikit-learn`, `scipy`, `matplotlib`, `joblib`
 
 ---
 
@@ -59,7 +91,7 @@ IoMT_ransom/
     ├── config.py             # All hyperparameters and paths
     ├── utils.py
     ├── simulation/
-    │   └── simulate_icu.py   # Generate the ICU dataset
+    │   └── simulate_icu.py
     ├── preprocess/
     │   ├── preprocess_sim.py
     │   └── preprocess_ton.py
@@ -74,7 +106,7 @@ IoMT_ransom/
     │   ├── train_mamba.py
     │   └── train_lstm.py
     ├── explore/
-    │   └── explore_cic.py    # EDA for CICIoMT2024 dataset
+    │   └── explore_cic.py
     └── evaluate/
         ├── evaluate_ton.py
         ├── evaluate_sim.py
@@ -90,17 +122,12 @@ IoMT_ransom/
 
 ## Running the Pipeline
 
-All commands are run from the project root directory.
+All commands are run from the project root.
 
 ### Step 1 — Preprocess
 
-**Simulated ICU:**
 ```bash
 python -m src.preprocess.preprocess_sim
-```
-
-**TON-IoT:**
-```bash
 python -m src.preprocess.preprocess_ton
 ```
 
@@ -123,50 +150,30 @@ python -m src.train.train_lstm ton
 
 ### Step 4 — Evaluate
 
-**Standard metrics (accuracy, precision, recall, F1, AUC-ROC):**
 ```bash
+# Standard metrics (accuracy, precision, recall, F1, AUC-ROC)
 python -m src.evaluate.evaluate_sim
 python -m src.evaluate.evaluate_ton
-```
 
-**Ablation study (AE Only vs AE+LR vs AE+LSTM vs AE+Mamba):**
-```bash
+# Ablation study
 python -m src.evaluate.ablation
-```
 
-**Early detection analysis (detection lag after attack onset):**
-```bash
+# Early detection analysis
 python -m src.evaluate.early_detection
-```
 
-**Statistical significance testing (McNemar's test):**
-```bash
+# Statistical significance (McNemar's test)
 python -m src.evaluate.significance
-```
 
-**Generate all figures:**
-```bash
+# Generate all figures
 python -m src.evaluate.visualize
 python -m src.evaluate.plot_loss_curves
 ```
 
 ---
 
-## Exploratory Analysis (CICIoMT2024)
-
-Run EDA on the CICIoMT2024 dataset to generate label distributions, protocol composition, correlation heatmaps, feature importance, and anomaly gap plots:
-
-```bash
-python -m src.explore.explore_cic
-```
-
-Outputs are saved to `results/figures/` with the prefix `cic_`.
-
----
-
 ## Configuration
 
-All hyperparameters and file paths are in `src/config.py`. Key settings:
+All hyperparameters and paths are in `src/config.py`:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -177,3 +184,21 @@ All hyperparameters and file paths are in `src/config.py`. Key settings:
 | `clf_epochs` | 15 | Classifier training epochs |
 | `ae_epochs` | 15 | Autoencoder training epochs |
 | `threshold` | 0.5 | Classification decision threshold |
+
+---
+
+## Security
+
+To report a vulnerability, please see [SECURITY.md](SECURITY.md).
+
+---
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+## License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
