@@ -3,7 +3,7 @@
 > Early detection of ransomware attacks on Internet of Medical Things (IoMT) devices using a two-stage deep learning pipeline.
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ethanmalavia/IoMT_ransom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ethanmalavia/IoMT_ransom)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12508/badge)](https://www.bestpractices.dev/projects/12508)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12508/badge?v=2)](https://www.bestpractices.dev/projects/12508)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
 
