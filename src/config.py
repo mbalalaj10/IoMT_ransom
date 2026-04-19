@@ -16,10 +16,12 @@ class Config:
     # Processed data paths
     processed_ton_iot_path: str = "data/processed/ton_processed/"
     processed_icu_path: str = "data/processed/sim_processed/"
+    processed_cic_path: str = "data/processed/cic_processed/"
 
     # Split directories
     ton_splits_path: str = "data/splits/ton_splits/"
     sim_splits_path: str = "data/splits/sim_splits/"
+    cic_splits_path: str = "data/splits/cic_splits/"
 
     # Dataset columns
     target_column: str = "label"
@@ -48,9 +50,10 @@ class Config:
     clf_batch_size: int = 64
     clf_epochs: int = 15
 
-    # Splits
-    test_size: float = 0.2
-    validation_size: float = 0.1
+    # Splits  (70 / 15 / 15 train / val / test)
+    test_size: float = 0.15
+    validation_size: float = 0.1765   # 15% of the 85% trainval remainder ≈ 15% of total
+    early_stopping_patience: int = 5
 
     # Model saving
     model_dir: str = "models"
@@ -59,8 +62,11 @@ class Config:
     sim_autoencoder_model_path: str = "models/autoencoder_sim.pt"
     ton_classifier_model_path: str = "models/mamba_classifier_ton.pt"
     sim_classifier_model_path: str = "models/mamba_classifier_sim.pt"
+    cic_classifier_model_path: str = "models/mamba_classifier_cic.pt"
     ton_lstm_model_path: str = "models/lstm_classifier_ton.pt"
     sim_lstm_model_path: str = "models/lstm_classifier_sim.pt"
+    cic_lstm_model_path: str = "models/lstm_classifier_cic.pt"
+    cic_autoencoder_model_path: str = "models/autoencoder_cic.pt"
 
     # Training loss histories
     loss_dir: str = "results/losses"
@@ -69,6 +75,3 @@ class Config:
 
     # Evaluation
     threshold: float = 0.5
-
-    ton_splits_path: str = "data/splits/ton_splits/"
-    sim_splits_path: str = "data/splits/sim_splits/"

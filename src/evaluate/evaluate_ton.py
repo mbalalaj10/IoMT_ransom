@@ -8,7 +8,7 @@ from src.utils import set_seed, get_device
 from src.datasets.sequence_dataset import ArraySequenceDataset
 from src.models.autoencoder import Autoencoder
 from src.models.mamba_classifier import MambaClassifier
-from src.evaluate.metrics import compute_metrics, print_metrics
+from src.evaluate.metrics import compute_metrics, print_metrics, find_optimal_threshold
 
 
 def extract_latent_and_error(model, X, device, batch_size=256):
@@ -84,10 +84,13 @@ def main():
 
     y_prob = np.concatenate(all_probs)
     y_true = np.concatenate(all_labels)
-    y_pred = (y_prob >= cfg.threshold).astype(int)
 
+    threshold = find_optimal_threshold(y_true, y_prob)
+    print(f"Optimal threshold (max F1): {threshold:.2f}")
+
+    y_pred = (y_prob >= threshold).astype(int)
     metrics = compute_metrics(y_true, y_pred, y_prob)
-    print_metrics(metrics, dataset_label="TON-IoT Test")
+    print_metrics(metrics, dataset_label="TON-IoT Test", threshold=threshold)
 
 
 if __name__ == "__main__":

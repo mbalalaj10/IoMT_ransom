@@ -18,21 +18,21 @@ def main(dataset_name: str = "ton"):
         split_dir = cfg.ton_splits_path
     elif dataset_name.lower() == "sim":
         split_dir = cfg.sim_splits_path
+    elif dataset_name.lower() == "cic":
+        split_dir = cfg.cic_splits_path
     else:
-        raise ValueError("dataset_name must be 'ton' or 'sim'")
+        raise ValueError("dataset_name must be 'ton', 'sim', or 'cic'")
 
-    # Load preprocessed splits
     X_train = np.load(os.path.join(split_dir, "X_train.npy"))
     y_train = np.load(os.path.join(split_dir, "y_train.npy"))
+    X_val   = np.load(os.path.join(split_dir, "X_val.npy"))
+    y_val   = np.load(os.path.join(split_dir, "y_val.npy"))
 
-    print("Loaded X_train shape:", X_train.shape)
-    print("Loaded y_train shape:", y_train.shape)
+    print(f"Train: {X_train.shape}  Val: {X_val.shape}")
 
-    # Train autoencoder on benign traffic only
-    benign_mask = y_train == 0
-    X_train_benign = X_train[benign_mask]
-
-    print("Benign training shape:", X_train_benign.shape)
+    X_train_benign = X_train[y_train == 0]
+    X_val_benign   = X_val[y_val == 0]
+    print(f"Benign train: {X_train_benign.shape}  Benign val: {X_val_benign.shape}")
 
     if len(X_train_benign) == 0:
         raise ValueError("No benign samples found for autoencoder training.")
@@ -40,11 +40,16 @@ def main(dataset_name: str = "ton"):
     device = get_device()
     print("Using device:", device)
 
-    dataset = TensorDataset(
-        torch.tensor(X_train_benign, dtype=torch.float32),
-        torch.tensor(X_train_benign, dtype=torch.float32),
+    train_loader = DataLoader(
+        TensorDataset(torch.tensor(X_train_benign, dtype=torch.float32),
+                      torch.tensor(X_train_benign, dtype=torch.float32)),
+        batch_size=cfg.ae_batch_size, shuffle=True,
     )
-    loader = DataLoader(dataset, batch_size=cfg.ae_batch_size, shuffle=True)
+    val_loader = DataLoader(
+        TensorDataset(torch.tensor(X_val_benign, dtype=torch.float32),
+                      torch.tensor(X_val_benign, dtype=torch.float32)),
+        batch_size=cfg.ae_batch_size, shuffle=False,
+    )
 
     model = Autoencoder(
         input_dim=X_train.shape[1],
@@ -56,38 +61,57 @@ def main(dataset_name: str = "ton"):
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.ae_learning_rate)
 
-    epoch_losses = []
+    save_path = {
+        "ton": cfg.ton_autoencoder_model_path,
+        "sim": cfg.sim_autoencoder_model_path,
+        "cic": cfg.cic_autoencoder_model_path,
+    }[dataset_name.lower()]
+
+    best_val_loss   = float("inf")
+    patience_counter = 0
+    train_losses    = []
 
     for epoch in range(cfg.ae_epochs):
         model.train()
-        total_loss = 0.0
-
-        for x_batch, target_batch in loader:
-            x_batch = x_batch.to(device)
-            target_batch = target_batch.to(device)
-
+        total = 0.0
+        for x_batch, target in train_loader:
+            x_batch, target = x_batch.to(device), target.to(device)
             optimizer.zero_grad()
-
             _, x_hat = model(x_batch)
-            loss = criterion(x_hat, target_batch)
-
+            loss = criterion(x_hat, target)
             loss.backward()
             optimizer.step()
+            total += loss.item()
+        train_loss = total / len(train_loader)
+        train_losses.append(train_loss)
 
-            total_loss += loss.item()
+        model.eval()
+        val_total = 0.0
+        with torch.no_grad():
+            for x_batch, target in val_loader:
+                x_batch = x_batch.to(device)
+                _, x_hat = model(x_batch)
+                val_total += criterion(x_hat, x_batch).item()
+        val_loss = val_total / len(val_loader)
 
-        avg_loss = total_loss / len(loader)
-        epoch_losses.append(avg_loss)
-        print(f"Epoch [{epoch + 1}/{cfg.ae_epochs}] Loss: {avg_loss:.6f}")
+        print(f"Epoch [{epoch+1}/{cfg.ae_epochs}]  Train: {train_loss:.6f}  Val: {val_loss:.6f}", end="")
 
-    save_path = cfg.ton_autoencoder_model_path if dataset_name.lower() == "ton" else cfg.sim_autoencoder_model_path
-    torch.save(model.state_dict(), save_path)
-    print(f"Autoencoder saved to: {save_path}")
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), save_path)
+            patience_counter = 0
+            print("  ✓ saved")
+        else:
+            patience_counter += 1
+            print(f"  (patience {patience_counter}/{cfg.early_stopping_patience})")
+            if patience_counter >= cfg.early_stopping_patience:
+                print(f"Early stopping at epoch {epoch+1}.")
+                break
+
+    print(f"Best val loss: {best_val_loss:.6f}  →  {save_path}")
 
     os.makedirs(cfg.loss_dir, exist_ok=True)
-    loss_path = os.path.join(cfg.loss_dir, f"ae_{dataset_name}_losses.npy")
-    np.save(loss_path, np.array(epoch_losses))
-    print(f"Loss history saved to: {loss_path}")
+    np.save(os.path.join(cfg.loss_dir, f"ae_{dataset_name}_losses.npy"), np.array(train_losses))
 
 
 if __name__ == "__main__":
